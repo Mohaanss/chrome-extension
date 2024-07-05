@@ -1,4 +1,3 @@
-//sample to handle notification
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     unitName: {
@@ -9,20 +8,20 @@ chrome.runtime.onInstalled.addListener(() => {
       Isha: false,
     },
   });
+  fetchDataFromAPI();
   createDailyAlarm();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "notifyMorning") {
-    showNotification("08:00 AM");
-  } else if (alarm.name === "notifyNoon") {
-    showNotification("12:00 PM");
-  } else if (alarm.name === "notifyAfternoon") {
-    showNotification("04:00 PM");
+  console.log("Alarm triggered:", alarm.name);
+  if (alarm.name === "fetchData") {
+    fetchDataFromAPI();
+  } else {
+    showNotification(alarm.name);
   }
 });
 
-function createDailyAlarm() {
+const createDailyAlarm = async () => {
   const now = new Date();
   const millisTillMidnight =
     new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0) -
@@ -33,9 +32,17 @@ function createDailyAlarm() {
     periodInMinutes: 1440,
   });
 
-  createNotificationAlarm("notifyNoon", 22, 36);
-}
-function createNotificationAlarm(name, hour, minute) {
+  const prayerTime = await getPrayerTime();
+  chrome.storage.local.get("unitName", (result) => {
+    for (const [key, value] of Object.entries(result.unitName)) {
+      let [hours, minutes] = prayerTime[key].split(":");
+      if (value === true) {
+        createNotificationAlarm(key, hours, minutes);
+      }
+    }
+  });
+};
+const createNotificationAlarm = (name, hour, minute) => {
   const now = new Date();
   const targetTime = new Date(
     now.getFullYear(),
@@ -52,22 +59,64 @@ function createNotificationAlarm(name, hour, minute) {
       when: Date.now() + millisTillTime,
       periodInMinutes: 1440,
     });
-  } else {
-    console.log(
-      `L'heure ${hour}:${minute} est déjà passée aujourd'hui. Aucune alarme créée pour ${name}.`
-    );
   }
-}
+};
 
-function showNotification(time) {
+const showNotification = (time) => {
   chrome.storage.local.get("fetchedData", (result) => {
-    const data = result.fetchedData || "Pas de données disponibles";
+    const data = result.fetchedData || "No data available";
     chrome.notifications.create({
       type: "basic",
       iconUrl:
         "../../../dist/images/apple-icon-57x57.cd4dd987179efa275648b5ac0d824010.png",
-      title: `Notification pour ${time}`,
-      message: `Données récupérées: ${data}`,
+      title: `Notification for ${time}`,
+      message: `Data: ${data}`,
     });
   });
-}
+};
+const fetchDataFromAPI = async () => {
+  const data = {
+    Fajr: "03:57",
+    Dhuhr: "12:59",
+    Asr: "18:11",
+    Maghrib: "20:12",
+    Isha: "22:02",
+  };
+  try {
+    chrome.storage.local.set({ timing: data });
+  } catch (error) {
+    console.error("Error during data recovery:", error);
+  }
+};
+const getPrayerTime = async () => {
+  return new Promise((resolve) => {
+    chrome.storage.local.get("timing", (result) => {
+      resolve(result.timing);
+    });
+  });
+};
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "createDailyAlarm") {
+    createDailyAlarm()
+      .then(() => {
+        sendResponse({ status: "Alarm created" });
+      })
+      .catch((error) => {
+        sendResponse({ status: "Error", message: error.message });
+      });
+    return true;
+  } else if (message.action === "deleteAlarms") {
+    deleteAlarms(message.message);
+  }
+});
+
+const deleteAlarms = (name) => {
+  chrome.alarms.clear(name, function (wasCleared) {
+    if (wasCleared) {
+      console.log(`The ${name} alarm has been successfully cleared.`);
+    } else {
+      console.log(`The ${name} alarm could not be cleared.`);
+    }
+  });
+};

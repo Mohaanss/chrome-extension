@@ -7,6 +7,7 @@ module.exports = {
     worker: "./src/service/worker.js",
   },
   output: {
+    // eslint-disable-next-line no-undef
     path: path.resolve(__dirname, "dist"),
     filename: "[name].bundle.js",
   },
